@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Поймай перчатку</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poiret+One&display=swap" rel="stylesheet">
+<style>
+  :root{--gold:#e9c46a;--gold2:#b8862f;--ink:#0b0608;--wine:#5a0d1a}
+  html,body{margin:0;height:100%;background:#050304;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#f6ead2}
+  canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+  .vig{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 42%,transparent 45%,rgba(0,0,0,.55) 100%)}
+  .deco{font-family:"Poiret One","Century Gothic",system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase}
+  #hud{position:fixed;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:flex-start;padding:max(12px,env(safe-area-inset-top)) 14px 0;pointer-events:none;opacity:0;transition:opacity .4s}
+  #hud.on{opacity:1}
+  #score{font-size:15px;color:var(--gold);text-shadow:0 1px 6px #000}
+  #score b{font-size:26px;font-weight:400}
+  #lives{font-size:22px;letter-spacing:4px;color:#e23b54;text-shadow:0 1px 6px #000}
+  #lives .off{color:#3b2a2e}
+  #toast{position:fixed;left:0;right:0;top:24%;text-align:center;font-size:30px;color:var(--gold);text-shadow:0 2px 14px #000,0 0 22px rgba(233,196,106,.45);pointer-events:none;opacity:0;transform:translateY(8px);transition:opacity .25s,transform .25s}
+  #toast.on{opacity:1;transform:none}
+  .panel{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(6,3,4,.55);transition:opacity .4s;z-index:5}
+  .panel.hide{opacity:0;pointer-events:none}
+  .card{width:min(86vw,360px);padding:26px 22px 22px;text-align:center;background:linear-gradient(180deg,rgba(30,10,14,.94),rgba(12,5,7,.96));border:1px solid var(--gold2);outline:1px solid rgba(233,196,106,.25);outline-offset:5px;border-radius:4px;box-shadow:0 20px 60px #000}
+  .card h1{margin:0 0 6px;font-size:34px;font-weight:400;color:var(--gold)}
+  .card .sub{font-size:12px;color:#d9c7a4;opacity:.85;margin-bottom:14px}
+  .card p{margin:10px 0 18px;font-size:15px;line-height:1.45;color:#eadfca;text-wrap:balance}
+  .rule{height:1px;background:linear-gradient(90deg,transparent,var(--gold2),transparent);margin:12px 0}
+  button.go{font:inherit;font-size:17px;padding:12px 30px;color:#1a0c06;background:linear-gradient(180deg,#f3d58a,#c9973c);border:0;border-radius:3px;cursor:pointer;box-shadow:0 4px 18px rgba(233,196,106,.25)}
+  button.go:active{transform:translateY(1px)}
+  #mute{position:fixed;right:10px;bottom:max(10px,env(safe-area-inset-bottom));z-index:9;font-size:15px;background:rgba(0,0,0,.5);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:5px 8px;cursor:pointer}
+  #introWrap{position:fixed;inset:0;background:#000;z-index:8;display:none;align-items:center;justify-content:center}
+  #introWrap.on{display:flex}
+  #intro{width:100%;height:100%;object-fit:contain;background:#000}
+  #skip{position:absolute;right:14px;bottom:max(54px,calc(env(safe-area-inset-bottom) + 54px));font-size:13px;padding:9px 16px;color:var(--gold);background:rgba(0,0,0,.55);border:1px solid var(--gold2);border-radius:3px;cursor:pointer}
+  #hint{position:fixed;left:0;right:0;bottom:max(46px,calc(env(safe-area-inset-bottom) + 46px));text-align:center;font-size:12px;color:#d9c7a4;opacity:0;transition:opacity .5s;pointer-events:none;text-shadow:0 1px 6px #000}
+  #hint.on{opacity:.9}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="vig"></div>
+<div id="hud"><div id="score" class="deco">Поймано <b id="sc">0</b>/<span id="goal">10</span></div><div id="lives"></div></div>
+<div id="toast" class="deco"></div>
+<div id="hint" class="deco">Веди пальцем — подставь руку под перчатку</div>
+
+<div id="pStart" class="panel"><div class="card">
+  <div class="sub deco">Джаз-клуб · вечернее шоу</div>
+  <h1 class="deco">Перчатка</h1>
+  <div class="rule"></div>
+  <p>Она снимает длинную чёрную перчатку и бросает её со сцены в зал. Поймай десять — и перчатка твоя.</p>
+  <button class="go deco" id="bStart">Занять место</button>
+</div></div>
+
+<div id="pEnd" class="panel hide"><div class="card">
+  <div class="sub deco" id="endSub"></div>
+  <h1 class="deco" id="endTitle"></h1>
+  <div class="rule"></div>
+  <p id="endText"></p>
+  <button class="go deco" id="bAgain">Ещё раз</button>
+</div></div>
+
+<div id="introWrap"><video id="intro" src="glove-intro.mp4" playsinline webkit-playsinline muted preload="auto"></video><button id="skip" class="deco">Пропустить</button></div>
+<audio id="bgm" src="glove-music.mp3" loop preload="auto"></audio>
+<button id="mute">🔊</button>
+
+<script>
+"use strict";
+const tg=(window.Telegram&&Telegram.WebApp)?Telegram.WebApp:null;
+try{tg&&tg.ready();tg&&tg.expand();tg&&tg.disableVerticalSwipes&&tg.disableVerticalSwipes();}catch(e){}
+function haptic(k){try{if(!tg||!tg.HapticFeedback)return;k==='ok'?tg.HapticFeedback.notificationOccurred('success'):k==='bad'?tg.HapticFeedback.notificationOccurred('error'):tg.HapticFeedback.impactOccurred('light');}catch(e){}}
+const $=id=>document.getElementById(id);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), lerp=(a,b,t)=>a+(b-a)*t, smooth=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
+const rnd=(a,b)=>a+Math.random()*(b-a);
+
+/* ================= мини-движок WebGL ================= */
+const cv=$('c'); const gl=cv.getContext('webgl',{antialias:true,alpha:false});
+const M={
+  id(){const m=new Float32Array(16);m[0]=m[5]=m[10]=m[15]=1;return m;},
+  mul(a,b){const o=new Float32Array(16);for(let c=0;c<4;c++)for(let r=0;r<4;r++){o[c*4+r]=a[r]*b[c*4]+a[4+r]*b[c*4+1]+a[8+r]*b[c*4+2]+a[12+r]*b[c*4+3];}return o;},
+  trs(p,r,s){const cx=Math.cos(r[0]),sx=Math.sin(r[0]),cy=Math.cos(r[1]),sy=Math.sin(r[1]),cz=Math.cos(r[2]),sz=Math.sin(r[2]);const m=new Float32Array(16);
+    m[0]=(cy*cz+sy*sx*sz)*s[0];m[1]=(cx*sz)*s[0];m[2]=(-sy*cz+cy*sx*sz)*s[0];
+    m[4]=(-cy*sz+sy*sx*cz)*s[1];m[5]=(cx*cz)*s[1];m[6]=(sy*sz+cy*sx*cz)*s[1];
+    m[8]=(sy*cx)*s[2];m[9]=(-sx)*s[2];m[10]=(cy*cx)*s[2];
+    m[12]=p[0];m[13]=p[1];m[14]=p[2];m[15]=1;return m;},
+  persp(fy,asp,n,f){const t=1/Math.tan(fy/2),m=new Float32Array(16);m[0]=t/asp;m[5]=t;m[10]=(f+n)/(n-f);m[11]=-1;m[14]=2*f*n/(n-f);return m;},
+  look(e,c,u){let zx=e[0]-c[0],zy=e[1]-c[1],zz=e[2]-c[2];let l=Math.hypot(zx,zy,zz);zx/=l;zy/=l;zz/=l;
+    let xx=u[1]*zz-u[2]*zy,xy=u[2]*zx-u[0]*zz,xz=u[0]*zy-u[1]*zx;l=Math.hypot(xx,xy,xz);xx/=l;xy/=l;xz/=l;
+    const yx=zy*xz-zz*xy,yy=zz*xx-zx*xz,yz=zx*xy-zy*xx;const m=new Float32Array(16);
+    m[0]=xx;m[1]=yx;m[2]=zx;m[4]=xy;m[5]=yy;m[6]=zy;m[8]=xz;m[9]=yz;m[10]=zz;
+    m[12]=-(xx*e[0]+xy*e[1]+xz*e[2]);m[13]=-(yx*e[0]+yy*e[1]+yz*e[2]);m[14]=-(zx*e[0]+zy*e[1]+zz*e[2]);m[15]=1;return m;},
+  inv(m){const o=new Float32Array(16);
+    const a00=m[0],a01=m[1],a02=m[2],a03=m[3],a10=m[4],a11=m[5],a12=m[6],a13=m[7],a20=m[8],a21=m[9],a22=m[10],a23=m[11],a30=m[12],a31=m[13],a32=m[14],a33=m[15];
+    const b00=a00*a11-a01*a10,b01=a00*a12-a02*a10,b02=a00*a13-a03*a10,b03=a01*a12-a02*a11,b04=a01*a13-a03*a11,b05=a02*a13-a03*a12,b06=a20*a31-a21*a30,b07=a20*a32-a22*a30,b08=a20*a33-a23*a30,b09=a21*a32-a22*a31,b10=a21*a33-a23*a31,b11=a22*a33-a23*a32;
+    let d=b00*b11-b01*b10+b02*b09+b03*b08-b04*b07+b05*b06;d=1/d;
+    o[0]=(a11*b11-a12*b10+a13*b09)*d;o[1]=(a02*b10-a01*b11-a03*b09)*d;o[2]=(a31*b05-a32*b04+a33*b03)*d;o[3]=(a22*b04-a21*b05-a23*b03)*d;
+    o[4]=(a12*b08-a10*b11-a13*b07)*d;o[5]=(a00*b11-a02*b08+a03*b07)*d;o[6]=(a32*b02-a30*b05-a33*b01)*d;o[7]=(a20*b05-a22*b02+a23*b01)*d;
+    o[8]=(a10*b10-a11*b08+a13*b06)*d;o[9]=(a01*b08-a00*b10-a03*b06)*d;o[10]=(a30*b04-a31*b02+a33*b00)*d;o[11]=(a21*b02-a20*b04-a23*b00)*d;
+    o[12]=(a11*b07-a10*b09-a12*b06)*d;o[13]=(a00*b09-a01*b07+a02*b06)*d;o[14]=(a31*b01-a30*b03-a32*b00)*d;o[15]=(a20*b03-a21*b01+a22*b00)*d;return o;},
+  pt(m,p){const w=m[3]*p[0]+m[7]*p[1]+m[11]*p[2]+m[15];return[(m[0]*p[0]+m[4]*p[1]+m[8]*p[2]+m[12])/w,(m[1]*p[0]+m[5]*p[1]+m[9]*p[2]+m[13])/w,(m[2]*p[0]+m[6]*p[1]+m[10]*p[2]+m[14])/w];}
+};
+const VS=`attribute vec3 aP;attribute vec3 aN;attribute vec2 aU;uniform mat4 uM,uVP;uniform mat3 uNM;varying vec3 vW,vN,vL;varying vec2 vU;
+void main(){vec4 w=uM*vec4(aP,1.);vW=w.xyz;vL=aP;vN=uNM*aN;vU=aU;gl_Position=uVP*w;}`;
+const FS=`precision mediump float;varying vec3 vW,vN,vL;varying vec2 vU;
+uniform vec3 uC,uE,uCam,uSP,uSD;uniform float uSpec,uSpark,uRim,uA,uTex,uUnlit,uT,uSheen,uDim;uniform sampler2D uS;
+float h(vec3 p){return fract(sin(dot(p,vec3(12.9898,78.233,37.719)))*43758.5453);}
+void main(){vec3 b=uC;float a=uA;
+ if(uTex>.5){vec4 t=texture2D(uS,vU);if(uUnlit>.5){gl_FragColor=vec4(uC*t.rgb*t.a*uA,t.a*uA);return;}b=t.rgb;}
+ if(uUnlit>.5){gl_FragColor=vec4(b+uE,a);return;}
+ vec3 N=normalize(vN),V=normalize(uCam-vW),L=normalize(uSP-vW);
+ float cone=smoothstep(.957,.982,dot(-L,uSD));
+ float d=max(dot(N,L)*.75+.25,0.)*cone;
+ float f=max(dot(N,normalize(vec3(-.5,.35,.8))),0.)*.16;
+ vec3 Hh=normalize(L+V);float sp=pow(max(dot(N,Hh),0.),48.)*uSpec*(cone+.12);
+ float fr=1.-max(dot(N,V),0.);
+ vec3 col=b*(vec3(.085,.05,.055)+d*vec3(1.25,1.12,.95)+f*vec3(1.,.7,.6))*uDim;
+ col+=sp*vec3(1.,.95,.85)+pow(fr,3.)*uRim*vec3(.75,.8,1.)+b*pow(fr,2.)*uSheen*(.2+cone);
+ if(uSpark>0.){vec3 c=floor(vL*95.);float r=h(c);float s=pow(max(sin(r*40.+uT*(2.+r*5.)+dot(V,N)*9.),0.),22.);col+=s*uSpark*(.25+cone)*vec3(1.,.9,.55);}
+ gl_FragColor=vec4(col+uE,a);}`;
+function sh(t,s){const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(o));return o;}
+const prog=gl.createProgram();gl.attachShader(prog,sh(gl.VERTEX_SHADER,VS));gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FS));gl.linkProgram(prog);gl.useProgram(prog);
+const U={};['uM','uVP','uNM','uC','uE','uCam','uSP','uSD','uSpec','uSpark','uRim','uA','uTex','uUnlit','uT','uSheen','uDim','uS'].forEach(n=>U[n]=gl.getUniformLocation(prog,n));
+const A={p:gl.getAttribLocation(prog,'aP'),n:gl.getAttribLocation(prog,'aN'),u:gl.getAttribLocation(prog,'aU')};
+function mesh(P,N,Uv,I){const m={n:I.length};m.p=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,m.p);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(P),gl.STATIC_DRAW);
+  m.nn=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,m.nn);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(N),gl.STATIC_DRAW);
+  m.u=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,m.u);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(Uv),gl.STATIC_DRAW);
+  m.i=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,m.i);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(I),gl.STATIC_DRAW);return m;}
+// тело вращения: prof=[[r,y],...]; smoothN — сглаженные нормали
+function lathe(prof,S,smoothN){const P=[],N=[],Uv=[],I=[];
+  const ring=(r,y,nr,ny,v)=>{for(let j=0;j<=S;j++){const a=j/S*Math.PI*2,c=Math.cos(a),s=Math.sin(a);P.push(r*c,y,r*s);N.push(nr*c,ny,nr*s);Uv.push(j/S,v);}};
+  const segN=i=>{const dr=prof[i+1][0]-prof[i][0],dy=prof[i+1][1]-prof[i][1],l=Math.hypot(dr,dy)||1;return[dy/l,-dr/l];};
+  let rings=0;
+  if(smoothN){for(let i=0;i<prof.length;i++){const a=segN(Math.max(0,i-1)),b=segN(Math.min(prof.length-2,i));let nr=a[0]+b[0],ny=a[1]+b[1];const l=Math.hypot(nr,ny)||1;ring(prof[i][0],prof[i][1],nr/l,ny/l,i/(prof.length-1));rings++;}
+    for(let i=0;i<rings-1;i++)for(let j=0;j<S;j++){const a=i*(S+1)+j,b=a+S+1;I.push(a,b,a+1,a+1,b,b+1);}}
+  else{for(let i=0;i<prof.length-1;i++){const n=segN(i);ring(prof[i][0],prof[i][1],n[0],n[1],i/(prof.length-1));ring(prof[i+1][0],prof[i+1][1],n[0],n[1],(i+1)/(prof.length-1));
+      for(let j=0;j<S;j++){const a=i*2*(S+1)+j,b=a+S+1;I.push(a,b,a+1,a+1,b,b+1);}}}
+  return mesh(P,N,Uv,I);}
+function sphere(S){const p=[];const n=Math.max(8,S>>1);for(let k=0;k<=n;k++){const t=-Math.PI/2+Math.PI*k/n;p.push([Math.cos(t),Math.sin(t)]);}return lathe(p,S,true);}
+function cyl(r0,r1,h,S){return lathe([[0,0],[r0,0],[r1,h],[0,h]],S||14,false);} // от y=0 до y=h
+function box(w,hh,d){const x=w/2,y=hh/2,z=d/2,P=[],N=[],Uv=[],I=[];const f=(n,a,b,c,e)=>{const s=P.length/3;[a,b,c,e].forEach((v,k)=>{P.push(...v);N.push(...n);Uv.push(k==1||k==2?1:0,k>1?1:0);});I.push(s,s+1,s+2,s,s+2,s+3);};
+  f([0,0,1],[-x,-y,z],[x,-y,z],[x,y,z],[-x,y,z]);f([0,0,-1],[x,-y,-z],[-x,-y,-z],[-x,y,-z],[x,y,-z]);f([1,0,0],[x,-y,z],[x,-y,-z],[x,y,-z],[x,y,z]);f([-1,0,0],[-x,-y,-z],[-x,-y,z],[-x,y,z],[-x,y,-z]);f([0,1,0],[-x,y,z],[x,y,z],[x,y,-z],[-x,y,-z]);f([0,-1,0],[-x,-y,-z],[x,-y,-z],[x,-y,z],[-x,-y,z]);return mesh(P,N,Uv,I);}
+function torus(R,r,S,T){const P=[],N=[],Uv=[],I=[];for(let i=0;i<=S;i++){const a=i/S*Math.PI*2;for(let j=0;j<=T;j++){const b=j/T*Math.PI*2,cx=Math.cos(a),sy=Math.sin(a),cr=Math.cos(b),sr=Math.sin(b);P.push((R+r*cr)*cx,(R+r*cr)*sy,r*sr);N.push(cr*cx,cr*sy,sr);Uv.push(i/S,j/T);}}
+  for(let i=0;i<S;i++)for(let j=0;j<T;j++){const a=i*(T+1)+j,b=a+T+1;I.push(a,b,a+1,a+1,b,b+1);}return mesh(P,N,Uv,I);}
+function curtain(w,hh,nx,amp,k){const P=[],N=[],Uv=[],I=[];for(let i=0;i<=nx;i++){const x=-w/2+w*i/nx;const z=amp*Math.sin(x*k)+amp*.45*Math.sin(x*k*2.3+1.3);const dz=amp*k*Math.cos(x*k)+amp*.45*k*2.3*Math.cos(x*k*2.3+1.3);const l=Math.hypot(dz,1);
+    P.push(x,0,z,x,hh,z);N.push(-dz/l,0,1/l,-dz/l,0,1/l);Uv.push(i/nx,0,i/nx,1);if(i<nx){const a=i*2;I.push(a,a+2,a+1,a+1,a+2,a+3);}}return mesh(P,N,Uv,I);}
+function quad(){return mesh([-.5,-.5,0,.5,-.5,0,.5,.5,0,-.5,.5,0],[0,0,1,0,0,1,0,0,1,0,0,1],[0,0,1,0,1,1,0,1],[0,1,2,0,2,3]);}
+function tex(canvas){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,1);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,canvas);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);return t;}
+function hex(c){return[parseInt(c.slice(1,3),16)/255,parseInt(c.slice(3,5),16)/255,parseInt(c.slice(5,7),16)/255];}
+function mat(c,o){return Object.assign({c:hex(c),e:[0,0,0],spec:.15,spark:0,rim:.06,a:1,tex:null,unlit:0,add:0,sheen:0,dim:1},o||{});}
+function node(m,mt,pos,rot,scl,parent){const n={mesh:m,mat:mt,pos:pos||[0,0,0],rot:rot||[0,0,0],scl:scl||[1,1,1],kids:[],vis:true,W:M.id()};if(parent)parent.kids.push(n);return n;}
+const opaque=[],blend=[];
+function update(n,PW){if(!n.vis)return;n.W=M.mul(PW,M.trs(n.pos,n.rot,n.scl));if(n.mesh)(n.mat.a<1||n.mat.add||n.mat.unlit&&n.mat.tex?blend:opaque).push(n);for(const k of n.kids)update(k,n.W);}
+function nm(m){const a=m[0],b=m[1],c=m[2],d=m[4],e=m[5],f=m[6],g=m[8],h2=m[9],i=m[10];const A2=e*i-f*h2,B=-(d*i-f*g),C=d*h2-e*g;let det=a*A2+b*B+c*C;det=1/det;
+  return new Float32Array([A2*det,B*det,C*det,-(b*i-c*h2)*det,(a*i-c*g)*det,-(a*h2-b*g)*det,(b*f-c*e)*det,-(a*f-c*d)*det,(a*e-b*d)*det]);}
+function drawNode(n){const mt=n.mat,m=n.mesh;gl.uniformMatrix4fv(U.uM,false,n.W);gl.uniformMatrix3fv(U.uNM,false,nm(n.W));
+  gl.uniform3fv(U.uC,mt.c);gl.uniform3fv(U.uE,mt.e);gl.uniform1f(U.uSpec,mt.spec);gl.uniform1f(U.uSpark,mt.spark);gl.uniform1f(U.uRim,mt.rim);gl.uniform1f(U.uA,mt.a);gl.uniform1f(U.uUnlit,mt.unlit);gl.uniform1f(U.uSheen,mt.sheen);gl.uniform1f(U.uDim,mt.dim);
+  gl.uniform1f(U.uTex,mt.tex?1:0);if(mt.tex){gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,mt.tex);gl.uniform1i(U.uS,0);}
+  gl.bindBuffer(gl.ARRAY_BUFFER,m.p);gl.enableVertexAttribArray(A.p);gl.vertexAttribPointer(A.p,3,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,m.nn);gl.enableVertexAttribArray(A.n);gl.vertexAttribPointer(A.n,3,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,m.u);gl.enableVertexAttribArray(A.u);gl.vertexAttribPointer(A.u,2,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,m.i);gl.drawElements(gl.TRIANGLES,m.n,gl.UNSIGNED_SHORT,0);}
+
+/* ================= геометрия и материалы ================= */
+const G={sph:sphere(22),sphLo:sphere(12),box:box(1,1,1),quad:quad(),cyl:cyl(1,1,1,16)};
+const STAGE=0.9;
+const mSkin=mat('#e3ad8a',{spec:.12,rim:.05}), mGlove=mat('#0c0b0e',{spec:.75,rim:.28}), mGold=mat('#c9982f',{spec:.9,spark:1.5,rim:.1}), mHair=mat('#0d0909',{spec:.45,rim:.1});
+const mGoldPlain=mat('#d9ad45',{spec:1,rim:.1});
+const root=node(null,null);
+
+/* --- зал и сцена --- */
+const mVelvet=mat('#7a0b1c',{spec:.03,sheen:.9,rim:0});
+node(curtain(11,5.6,220,.085,9.5),mVelvet,[0,STAGE-.05,-1.7],null,null,root);
+node(curtain(3,5.6,60,.1,9),mat('#5a0815',{sheen:.7,spec:.02,rim:0}),[-3.6,STAGE-.05,-.3],[0,.9,0],null,root);
+node(curtain(3,5.6,60,.1,9),mat('#5a0815',{sheen:.7,spec:.02,rim:0}),[3.6,STAGE-.05,-.3],[0,-.9,0],null,root);
+node(G.box,mat('#150a0c',{spec:.05}),[0,6.1,-1.3],null,[11,1.6,1],root);                 // падуга
+node(G.box,mat('#c9982f',{spec:.8,e:[.12,.08,.02]}),[0,5.31,-.78],null,[11,.035,.03],root); // золотой кант
+node(G.box,mat('#2a1710',{spec:.5,rim:0}),[0,STAGE-.5,-.2],null,[11,1,3.2],root);          // планшет сцены
+node(G.box,mat('#c9982f',{spec:.8,e:[.1,.07,.02]}),[0,STAGE-.03,1.41],null,[11,.03,.02],root);
+const mGlow=mat('#ffffff',{unlit:1,add:1,tex:null});
+(function(){const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d');const g=x.createRadialGradient(32,32,0,32,32,32);g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(.3,'rgba(255,255,255,.45)');g.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=g;x.fillRect(0,0,64,64);mGlow.tex=tex(c);})();
+const glowMat=(c,a)=>Object.assign({},mGlow,{c:hex(c),a:a});
+for(let i=-4;i<=4;i++){node(G.sphLo,mat('#ffd9a0',{unlit:1,e:[.2,.15,.05]}),[i*.62,STAGE+.03,1.3],null,[.035,.035,.035],root);node(G.quad,glowMat('#ffb760',.5),[i*.62,STAGE+.05,1.32],null,[.5,.5,1],root);}
+// контрабасист в глубине сцены
+(function(){const b=node(null,null,[1.5,STAGE,-1.0],[0,-.35,0],null,root);const dk=mat('#16110f',{spec:.2,dim:.8});
+  node(lathe([[.2,0],[.21,.6],[.2,1.02],[.26,1.3],[.07,1.42]],14,true),dk,[0,0,0],null,[1,1,.6],b);
+  node(G.sph,mat('#c99878',{dim:.75}),[0,1.58,0],null,[.1,.125,.11],b);node(G.sph,mat('#120c0a',{dim:.8}),[0,1.63,-.03],null,[.108,.11,.115],b);
+  node(G.box,mat('#e8e2d6',{dim:.7}),[0,1.3,.13],null,[.1,.22,.02],b);
+  const bass=node(null,null,[-.42,0,.2],[0,0,.1],null,b);const wood=mat('#6b3a1a',{spec:.6,dim:.8});
+  node(G.sph,wood,[0,.52,0],null,[.33,.42,.12],bass);node(G.sph,wood,[0,1,0],null,[.25,.3,.11],bass);node(G.box,mat('#1a100a',{dim:.8}),[0,1.6,.03],null,[.055,.95,.04],bass);node(G.sph,wood,[0,2.1,.02],null,[.05,.08,.05],bass);})();
+
+/* --- артистка --- */
+const girl=node(null,null,[0,STAGE,0],null,null,root);
+const body=node(null,null,[0,0,0],null,null,girl);          // покачивание
+// платье: «русалка» с ярусами бахромы
+(function(){const p=[];const sil=y=>{ // радиус силуэта по высоте
+    const pts=[[0.06,.2],[.3,.135],[.5,.128],[.72,.15],[.9,.178],[1.0,.16],[1.1,.125],[1.2,.142],[1.27,.162],[1.31,.158]];
+    for(let i=0;i<pts.length-1;i++)if(y<=pts[i+1][0]){const t=(y-pts[i][0])/(pts[i+1][0]-pts[i][0]);return lerp(pts[i][1],pts[i+1][1],smooth(t));}return .158;};
+  let y=.06;p.push([.0,y]);p.push([sil(y)+.03,y]);
+  while(y<.92){const y2=y+.085;p.push([sil(y2)+.004,y2]);p.push([sil(y2)+.03,y2-.012]);y=y2;}   // ярусы
+  for(;y<=1.31;y+=.035)p.push([sil(y),y]);
+  node(lathe(p,40,false),mGold,[0,0,0],null,[1,1,.78],body);})();
+node(G.sph,mat('#1a1412',{spec:.6}),[-.06,.03,.07],null,[.04,.03,.09],body);node(G.sph,mat('#1a1412',{spec:.6}),[.06,.03,.07],null,[.04,.03,.09],body);
+const torso=node(null,null,[0,1.08,0],null,null,body);       // верх корпуса (наклоны)
+node(lathe([[.15,.14],[.158,.2],[.165,.27],[.15,.32],[.1,.352],[.05,.372],[.036,.395],[.035,.5]],24,true),mSkin,[0,0,0],null,[1.12,1,.72],torso);
+node(lathe([[.15,.05],[.163,.12],[.166,.2],[.163,.232]],32,true),mGold,[0,0,0],null,[1.03,1,.82],torso);   // лиф
+node(G.sph,mSkin,[-.18,.318,0],null,[.05,.045,.05],torso);node(G.sph,mSkin,[.18,.318,0],null,[.05,.045,.05],torso);
+// голова
+const head=node(null,null,[0,.465,0],null,null,torso);
+const fcv=document.createElement('canvas');fcv.width=512;fcv.height=256;const fx=fcv.getContext('2d');
+const mFace=mat('#e3ad8a',{spec:.1,rim:.04});
+node(sphere(36),mFace,[0,.115,.005],null,[.093,.126,.104],head);
+node(G.sph,mHair,[0,.15,-.025],null,[.118,.118,.118],head);                                  // шапка волос
+node(G.sph,mHair,[0,.205,.03],null,[.085,.045,.08],head);
+node(G.sph,mHair,[.035,.215,.085],[0,0,.5],[.04,.028,.03],head);                             // локон на лбу
+node(G.sph,mHair,[-.02,.2,.09],[0,0,-.4],[.035,.022,.025],head);
+for(const s of[-1,1]){                                                                       // волны по бокам до плеч
+  node(G.sph,mHair,[s*.1,.12,-.01],null,[.055,.09,.085],head);
+  node(G.sph,mHair,[s*.118,.045,-.02],null,[.06,.07,.08],head);
+  node(G.sph,mHair,[s*.115,-.03,-.03],null,[.062,.06,.075],head);
+  node(G.sph,mHair,[s*.095,-.075,-.045],null,[.055,.045,.06],head);
+  node(torus(.03,.0035,20,6),mGoldPlain,[s*.103,.045,.03],[0,s*1.2,0],null,head);            // серьги-кольца
+}
+node(G.sph,mHair,[0,.0,-.07],null,[.11,.1,.07],head);
+// руки: сегменты идут вниз по −Y
+function arm(side){const sh0=node(null,null,[side*.2,.325,0],null,null,torso);
+  const upSkin=node(cyl(.036,.04,.12,14),mSkin,[0,-.12,0],null,null,sh0);
+  const upGl=node(cyl(.036,.042,.17,14),mGlove,[0,-.27,0],null,null,sh0);
+  const elbow=node(null,null,[0,-.27,0],null,null,sh0);
+  node(G.sph,mGlove,[0,0,0],null,[.037,.037,.037],elbow);
+  const fore=node(cyl(.027,.036,.25,14),mGlove,[0,-.25,0],null,null,elbow);
+  const hand=node(null,null,[0,-.25,0],null,null,elbow);
+  const palm=node(G.sph,mGlove,[0,-.045,0],null,[.03,.055,.018],hand);
+  const fing=node(G.sph,mGlove,[0,-.105,.004],null,[.026,.045,.014],hand);
+  const thumb=node(G.sph,mGlove,[side*-.028,-.05,.012],[0,0,side*-.5],[.011,.035,.011],hand);
+  const parts=[upGl,elbow.kids[0],fore,palm,fing,thumb];
+  return{sh:sh0,elbow,hand,parts,set(stage){ // stage: 3 — перчатка надета … 0 — снята
+      const m=[stage>=3?mGlove:mSkin,stage>=3?mGlove:mSkin,stage>=2?mGlove:mSkin,stage>=1?mGlove:mSkin,stage>=1?mGlove:mSkin,stage>=1?mGlove:mSkin];parts.forEach((p,i)=>p.mat=m[i]);}};}
+const armL=arm(-1), armR=arm(1);
+
+/* --- лицо: рисуется на холсте и натягивается на голову --- */
+const face={blink:0,wink:0,smile:.35,open:0,kiss:0,brow:0,look:0}, faceT=Object.assign({},face);let faceKey='';
+function drawFace(f){const c=fx;c.setTransform(1,0,0,1,0,0);c.globalAlpha=1;
+  c.fillStyle='#0d0909';c.fillRect(0,0,512,256);
+  c.save();c.beginPath();c.moveTo(20,256);c.lineTo(20,150);c.bezierCurveTo(24,84,66,50,128,50);c.bezierCurveTo(190,50,232,84,236,150);c.lineTo(236,256);c.closePath();c.clip();
+  let g=c.createRadialGradient(128,128,18,128,128,125);g.addColorStop(0,'#f1c7a6');g.addColorStop(.6,'#e6b08c');g.addColorStop(1,'#c88a69');c.fillStyle=g;c.fillRect(0,0,256,256);
+  for(const s of[-1,1]){g=c.createRadialGradient(128+s*50,148,2,128+s*50,148,30);g.addColorStop(0,'rgba(214,96,96,.30)');g.addColorStop(1,'rgba(214,96,96,0)');c.fillStyle=g;c.fillRect(0,100,256,100);}
+  c.restore();
+  c.save();c.translate(128,140);c.scale(1.32,1.24);c.translate(-128,-140);
+  // брови
+  c.lineCap='round';c.lineJoin='round';
+  for(const s of[-1,1]){const x=128+s*29,yb=99-f.brow*5-(s>0?f.wink*-2:0);c.strokeStyle='#1c120d';c.lineWidth=3.6;c.beginPath();c.moveTo(x-s*14,yb+3);c.quadraticCurveTo(x+s*5,yb-7,x+s*20,yb+1);c.stroke();c.lineWidth=2;c.beginPath();c.moveTo(x+s*8,yb-3.5);c.lineTo(x+s*21,yb+1.5);c.stroke();}
+  // глаза
+  for(const s of[-1,1]){const x=128+s*29,y=118;const cl=clamp(f.blink+(s>0?f.wink:0)+f.smile*.18,0,1);const hh=8.5*(1-cl);
+    g=c.createRadialGradient(x+s*3,y-6,2,x+s*3,y-6,20);g.addColorStop(0,'rgba(70,40,35,.55)');g.addColorStop(1,'rgba(70,40,35,0)');c.fillStyle=g;c.fillRect(x-24,y-24,48,30);  // тени
+    const up=()=>{c.moveTo(x-s*15,y+1.5);c.quadraticCurveTo(x-s*2,y-hh*1.75,x+s*15,y-1.5);};
+    if(hh>1.2){c.save();c.beginPath();up();c.quadraticCurveTo(x+s*2,y+hh*1.15,x-s*15,y+1.5);c.closePath();c.fillStyle='#f6eee8';c.fill();c.clip();
+      const ix=x+f.look*3.5,iy=y-1;c.fillStyle='#2a170d';c.beginPath();c.arc(ix,iy,7.4,0,7);c.fill();c.fillStyle='#5a3418';c.beginPath();c.arc(ix,iy+.6,5.6,0,7);c.fill();c.fillStyle='#0a0504';c.beginPath();c.arc(ix,iy,3,0,7);c.fill();
+      c.fillStyle='rgba(255,255,255,.9)';c.beginPath();c.arc(ix-2.4,iy-2.6,1.6,0,7);c.fill();c.fillStyle='rgba(0,0,0,.22)';c.fillRect(x-16,y-12,32,5);c.restore();
+      c.strokeStyle='rgba(120,70,55,.5)';c.lineWidth=1;c.beginPath();c.moveTo(x-s*13,y+2.5);c.quadraticCurveTo(x+s*2,y+hh*1.15+.5,x+s*14,y-.5);c.stroke();}
+    c.strokeStyle='#0b0606';c.lineWidth=3.1;c.beginPath();up();c.stroke();                 // верхнее веко
+    c.lineWidth=2.6;c.beginPath();c.moveTo(x+s*13,y-2);c.quadraticCurveTo(x+s*19,y-4,x+s*24,y-9);c.stroke(); // стрелка
+    c.lineWidth=1.2;for(let k=0;k<4;k++){const lx=x+s*(3+k*3.6),ly=y-hh*(1.25-k*.22)-1;c.beginPath();c.moveTo(lx,ly);c.lineTo(lx+s*2.4,ly-3.6);c.stroke();}}
+  // нос
+  c.strokeStyle='rgba(150,90,65,.38)';c.lineWidth=1.6;c.beginPath();c.moveTo(123,124);c.quadraticCurveTo(120,140,121.5,147);c.stroke();
+  c.fillStyle='rgba(110,55,40,.55)';c.beginPath();c.ellipse(122.5,150,2.6,1.5,-.3,0,7);c.fill();c.beginPath();c.ellipse(133.5,150,2.6,1.5,.3,0,7);c.fill();
+  c.fillStyle='rgba(255,240,225,.35)';c.beginPath();c.ellipse(128,136,2.2,10,0,0,7);c.fill();
+  // губы
+  const cy=172-f.open*1.5,w=19*(1+.3*f.smile-.5*f.kiss),lift=5.5*f.smile-1.5*f.kiss,th=1+.55*f.kiss,op=f.open*7+f.smile*1.6;
+  c.fillStyle='#a5101d';c.beginPath();c.moveTo(128-w,cy-lift);c.bezierCurveTo(128-w*.55,cy-5.5*th-lift*.3,128-5,cy-7.5*th,128-2.5,cy-6*th);c.quadraticCurveTo(128,cy-4.6*th,130.5,cy-6*th);
+  c.bezierCurveTo(133,cy-7.5*th,128+w*.55,cy-5.5*th-lift*.3,128+w,cy-lift);c.bezierCurveTo(128+w*.55,cy+8.5*th+op,128-w*.55,cy+8.5*th+op,128-w,cy-lift);c.closePath();c.fill();
+  if(op>1.2){c.fillStyle='#2a060b';c.beginPath();c.moveTo(128-w*.78,cy-lift*.7);c.quadraticCurveTo(128,cy-1.5,128+w*.78,cy-lift*.7);c.quadraticCurveTo(128,cy+op*1.25,128-w*.78,cy-lift*.7);c.fill();
+    c.fillStyle='#f4efe8';c.beginPath();c.moveTo(128-w*.6,cy-lift*.55);c.quadraticCurveTo(128,cy-1,128+w*.6,cy-lift*.55);c.quadraticCurveTo(128,cy+Math.min(op*.55,3.4),128-w*.6,cy-lift*.55);c.fill();}
+  else{c.strokeStyle='#5a0810';c.lineWidth=1.3;c.beginPath();c.moveTo(128-w*.9,cy-lift*.85);c.quadraticCurveTo(128,cy+.8+lift*.25,128+w*.9,cy-lift*.85);c.stroke();}
+  c.fillStyle='rgba(255,170,170,.35)';c.beginPath();c.ellipse(128,cy+4.5*th+op*.75,w*.34,1.7,0,0,7);c.fill();
+  c.fillStyle='rgba(150,85,60,.25)';c.beginPath();c.ellipse(128,cy+16+op,9,2.6,0,0,7);c.fill();
+  c.restore();
+  if(!mFace.tex)mFace.tex=tex(fcv);else{gl.bindTexture(gl.TEXTURE_2D,mFace.tex);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,1);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,fcv);}}
+
+/* --- летящая перчатка: цепочка сегментов, ткань изгибается --- */
+function makeGlove(){const r=node(null,null,[0,-50,0],null,[1.25,1.25,1.25],root);const holder=node(null,null,[0,.32,0],null,null,r);const segs=[];let p=holder;
+  const R=[.05,.047,.044,.041,.038,.035,.032,.03];
+  for(let i=0;i<7;i++){const s=node(cyl(R[i+1],R[i],.085,12),mGlove,[0,i?-.085:0,0],null,null,p);segs.push(s);p=s;}
+  // сегмент нарисован от y=0 до +.085, поэтому сдвигаем меш вниз
+  segs.forEach(s=>{const m=s.mesh;s.mesh=null;node(m,mGlove,[0,-.085,0],null,null,s);});
+  const hd=node(null,null,[0,-.085,0],null,null,p);node(G.sph,mGlove,[0,-.05,0],null,[.04,.06,.02],hd);
+  for(let k=0;k<4;k++)node(cyl(.009,.011,.075,8),mGlove,[-.027+k*.018,-.17,0],[0,0,(k-1.5)*.07],null,hd);
+  node(cyl(.01,.012,.06,8),mGlove,[.045,-.1,0],[0,0,.6],null,hd);
+  const halo=node(G.quad,glowMat('#ffd9a0',.16),[0,0,-.05],null,[1.1,1.1,1],r);
+  return{root:r,holder,segs,hd,halo,flap(t,amp){segs.forEach((s,i)=>{if(i){s.rot[0]=Math.sin(t*9-i*.9)*amp;s.rot[2]=Math.cos(t*7-i*.7)*amp*.6;}});hd.rot[0]=Math.sin(t*9-6)*amp*1.3;}};}
+const glove=makeGlove();
+
+/* --- рука игрока и прицел --- */
+const pHand=node(null,null,[0,0,0],null,[1.5,1.5,1.5],root);
+(function(){const sl=mat('#1b1b22',{spec:.2,e:[.03,.03,.04],rim:.25}),cf=mat('#f2efe8',{e:[.3,.3,.3]}),sk=mat('#d9a685',{e:[.42,.3,.24],rim:.2});
+  node(cyl(.05,.042,.75,12),sl,[0,-.9,0],null,null,pHand);node(cyl(.045,.045,.05,12),cf,[0,-.16,0],null,null,pHand);
+  node(G.box,sk,[0,-.06,0],null,[.085,.1,.03],pHand);pHand.f=[];
+  for(let k=0;k<4;k++){const f=node(null,null,[-.032+k*.0215,-.01,0],[0,0,(1.5-k)*.09],null,pHand);node(cyl(.0095,.008,k==1||k==2?.085:.07,8),sk,[0,0,0],null,null,f);pHand.f.push(f);}
+  const th=node(null,null,[.045,-.09,0],[0,0,-.9],null,pHand);node(cyl(.011,.009,.06,8),sk,[0,0,0],null,null,th);pHand.f.push(th);})();
+const ring=(function(){const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');x.strokeStyle='#fff';x.lineWidth=5;x.beginPath();x.arc(64,64,56,0,7);x.stroke();x.lineWidth=2;x.globalAlpha=.5;x.beginPath();x.arc(64,64,44,0,7);x.stroke();
+  return node(G.quad,Object.assign({},mGlow,{c:hex('#ffd98a'),a:0,tex:tex(c)}),[0,-50,0],null,null,root);})();
+// силуэты зрителей на переднем плане
+const crowd=node(null,null,[0,0,0],null,null,root);const mSil=mat('#050304',{spec:0,rim:.05,dim:.3});
+function buildCrowd(D,hw){crowd.kids.length=0;const pos=[[-.95,-.62,1.5],[.98,-.66,1.7],[-.5,-.8,1.05],[.55,-.78,1.15],[0,-.92,.95]];
+  for(const[fx2,dy,dz]of pos){const x=fx2*hw*dz*1.15,y=1.5+dy*.62,z=D-dz;const h0=node(null,null,[x,y,z],null,null,crowd);node(G.sph,mSil,[0,0,0],null,[.115,.14,.12],h0);node(G.sph,mSil,[0,-.34,0],null,[.3,.2,.16],h0);}}
+
+/* ================= камера ================= */
+let VP=M.id(),IVP=M.id(),cam=[0,1.5,6],ZC=4,W=1,H=1,hwTan=.3;
+function resize(){const dpr=Math.min(window.devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);gl.viewport(0,0,cv.width,cv.height);
+  const asp=W/H,fy=asp<1?.92:.72;hwTan=Math.tan(fy/2)*asp;const D=clamp(1.02/hwTan,4.2,5.6);
+  cam=[0,1.55,D];const tgtY=asp<1?2.05:1.95;VP=M.mul(M.persp(fy,asp,.1,60),M.look(cam,[0,tgtY,0],[0,1,0]));IVP=M.inv(VP);ZC=D-2.3;buildCrowd(D,hwTan);}
+addEventListener('resize',resize);resize();
+function toPlane(nx,ny){const a=M.pt(IVP,[nx,ny,-1]),b=M.pt(IVP,[nx,ny,1]);const t=(ZC-a[2])/(b[2]-a[2]);return[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,ZC];}
+
+/* ================= звук ================= */
+let AC=null,muted=false;try{muted=localStorage.getItem('gl_mute')==='1';}catch(e){}
+const bgm=$('bgm');bgm.volume=.55;bgm.muted=muted;$('mute').textContent=muted?'🔇':'🔊';
+$('mute').addEventListener('pointerdown',e=>{e.stopPropagation();muted=!muted;bgm.muted=muted;$('mute').textContent=muted?'🔇':'🔊';try{localStorage.setItem('gl_mute',muted?'1':'0');}catch(e){}});
+function ac(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}}if(AC&&AC.state==='suspended')AC.resume();return AC;}
+function noise(dur,f0,f1,vol){if(muted)return;const a=ac();if(!a)return;const n=a.sampleRate*dur|0,b=a.createBuffer(1,n,a.sampleRate),d=b.getChannelData(0);for(let i=0;i<n;i++)d[i]=Math.random()*2-1;
+  const s=a.createBufferSource();s.buffer=b;const f=a.createBiquadFilter();f.type='bandpass';f.Q.value=.8;f.frequency.setValueAtTime(f0,a.currentTime);f.frequency.exponentialRampToValueAtTime(f1,a.currentTime+dur);
+  const g=a.createGain();g.gain.setValueAtTime(.0001,a.currentTime);g.gain.linearRampToValueAtTime(vol,a.currentTime+dur*.3);g.gain.exponentialRampToValueAtTime(.0001,a.currentTime+dur);s.connect(f);f.connect(g);g.connect(a.destination);s.start();}
+function tone(f,dur,vol,delay,type){if(muted)return;const a=ac();if(!a)return;const t0=a.currentTime+(delay||0),o=a.createOscillator(),g=a.createGain();o.type=type||'sine';o.frequency.value=f;g.gain.setValueAtTime(vol,t0);g.gain.exponentialRampToValueAtTime(.0001,t0+dur);o.connect(g);g.connect(a.destination);o.start(t0);o.stop(t0+dur+.02);}
+const sfx={whoosh(){noise(.45,500,1800,.12);},catch(){noise(.12,300,150,.25);tone(880,.35,.07,.02);tone(1320,.5,.05,.1);},miss(){tone(196,.5,.09,0,'triangle');tone(147,.6,.08,.15,'triangle');},
+  clap(){for(let i=0;i<26;i++)setTimeout(()=>noise(.07,1200,2400,.08),i*70+Math.random()*60);}};
+
+/* ================= анимация артистки ================= */
+// поза: L/R = [плечо вперёд(−)/назад(+), отведение в сторону(+), сгиб локтя(−)]
+const P_IDLE=t=>{const b=t*4.1;return{L:[-.55+.25*Math.sin(b),.5+.12*Math.sin(b*.5),-1.0+.3*Math.sin(b+1)],R:[.25,.55,-1.75+.08*Math.sin(b)],lean:.02*Math.sin(b*.5),sway:.07*Math.sin(b*.5),turn:.12*Math.sin(b*.25),hy:.07*Math.sin(b*.25+.5),hx:.03*Math.sin(b*.5),hz:-.06*Math.sin(b*.5),bob:.012*Math.abs(Math.sin(b*.5))};};
+const KEYS=[ // время, поза
+  [.0,null],
+  [.38,{L:[-1.3,.12,-.12],R:[-1.15,-.72,-1.25],lean:.06,sway:-.05,turn:-.18,hy:-.2,hx:.1,hz:.08,bob:0}],
+  [.95,{L:[-1.3,.12,-.1],R:[-1.2,-.3,-.55],lean:.04,sway:-.03,turn:-.12,hy:-.15,hx:.12,hz:.05,bob:0}],
+  [1.4,{L:[-.2,.45,-.5],R:[-2.95,.3,-.75],lean:-.16,sway:.08,turn:.3,hy:-.1,hx:-.08,hz:0,bob:.02}],
+  [1.62,{L:[.35,.5,-.3],R:[-1.45,.05,-.12],lean:.2,sway:-.04,turn:-.3,hy:.05,hx:.05,hz:0,bob:0}],
+  [2.15,{L:[.1,.45,-.4],R:[-.95,.2,-.35],lean:.08,sway:0,turn:-.1,hy:0,hx:0,hz:.04,bob:0}],
+  [2.8,null]];
+const mix3=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
+function mixPose(a,b,t){const o={};for(const k in a)o[k]=Array.isArray(a[k])?mix3(a[k],b[k],t):lerp(a[k],b[k],t);return o;}
+function throwPose(tt,hold,idle){ // hold — пауза на замахе (обманное движение)
+  let t=tt;if(t>1.4)t=t<1.4+hold?1.4:t-hold;
+  for(let i=0;i<KEYS.length-1;i++){if(t<=KEYS[i+1][0]){const a=KEYS[i][1]||idle,b=KEYS[i+1][1]||idle;let p=mixPose(a,b,smooth((t-KEYS[i][0])/(KEYS[i+1][0]-KEYS[i][0])));
+      if(hold&&tt>1.4&&tt<1.4+hold){const w=Math.sin((tt-1.4)/hold*Math.PI);p.R=[p.R[0]+w*.9*Math.sin((tt-1.4)*16),p.R[1],p.R[2]];p.lean+=w*.12;}return p;}}
+  return idle;}
+function applyPose(p){body.rot=[0,p.turn*.5,p.sway];body.pos[1]=p.bob;torso.rot=[p.lean,p.turn*.6,-p.sway*1.3];head.rot=[p.hx,p.hy,p.hz];
+  armL.sh.rot=[p.L[0],0,-p.L[1]];armL.elbow.rot=[p.L[2],0,0];armR.sh.rot=[p.R[0],0,p.R[1]];armR.elbow.rot=[p.R[2],0,0];}
+const wpos=n=>[n.W[12],n.W[13],n.W[14]];
+
+/* ================= игра ================= */
+const GOAL=10;let best=0;try{best=+localStorage.getItem('gl_best')||0;}catch(e){}
+const S={mode:'title',t:0,phase:'wait',pt:0,caught:0,lives:3,hold:0,released:false,stage:3,hx:0,hy:1.2,tx:0,ty:1.2,P0:[0,0,0],v:[0,0,0],acc:[0,0,0],T:1,ft:0,target:[0,0,0],res:'',spin:[0,0],nextDelay:1.2,winT:0,regl:0};
+window.S=S;
+function hud(){$('sc').textContent=S.caught;$('goal').textContent=GOAL;$('lives').innerHTML='♥'.repeat(S.lives)+'<span class="off">'+'♥'.repeat(3-S.lives)+'</span>';}
+let toastTm=0;function toast(s){const e=$('toast');e.textContent=s;e.classList.add('on');clearTimeout(toastTm);toastTm=setTimeout(()=>e.classList.remove('on'),1100);}
+function newGame(){S.mode='play';S.caught=0;S.lives=3;S.phase='wait';S.pt=0;S.nextDelay=1.6;S.stage=3;armL.set(3);S.res='';S.tx=0;S.ty=toPlane(0,-.5)[1];glove.root.pos=[0,-50,0];hud();$('hud').classList.add('on');$('hint').classList.add('on');setTimeout(()=>$('hint').classList.remove('on'),5000);}
+function startThrow(){S.phase='throw';S.pt=0;S.released=false;S.hold=(S.caught>=4&&Math.random()<.4)?rnd(.45,.9):0;}
+function release(){const n=S.caught;S.released=true;S.phase='flight';S.ft=0;
+  const P0=wpos(armR.hand);S.P0=P0;const tgt=toPlane(rnd(-.68,.68),rnd(-.72,.02));S.target=tgt;
+  const lob=n>=2&&Math.random()<.35;let T=lerp(1.75,1.05,n/(GOAL-1))*(lob?1.25:1)*rnd(.95,1.05);const g=lob?4.6:2.4;
+  const ax=(n>=3&&Math.random()<.5)?rnd(1.2,2.4)*(Math.random()<.5?-1:1):0;
+  S.acc=[ax,-g,0];S.T=T;S.v=[(tgt[0]-P0[0])/T-.5*ax*T,(tgt[1]-P0[1])/T+.5*g*T,(tgt[2]-P0[2])/T];
+  S.spin=[rnd(4,6.5)*(Math.random()<.5?-1:1),rnd(-1.5,1.5)];S.showAt=lerp(0,.42,n/(GOAL-1));sfx.whoosh();haptic();}
+function resolve(ok){S.res=ok?'caught':'miss';S.phase='result';S.pt=0;
+  if(ok){S.caught++;sfx.catch();haptic('ok');toast(['Поймал!','Браво!','Ловко!','Шарман!','Есть!'][Math.floor(Math.random()*5)]);}
+  else{S.lives--;sfx.miss();haptic('bad');toast('Мимо…');}
+  hud();}
+function endGame(win){S.mode=win?'win':'lose';S.winT=0;if(S.caught>best){best=S.caught;try{localStorage.setItem('gl_best',best);}catch(e){}}
+  $('endSub').textContent=win?'Занавес':'Шоу продолжается';$('endTitle').textContent=win?'Перчатка твоя':'Почти!';
+  $('endText').textContent=win?'Десять из десяти. Она посылает тебе воздушный поцелуй — и зал аплодирует.':'Поймано перчаток: '+S.caught+' из '+GOAL+'. Лучший результат: '+best+'.';
+  if(win)sfx.clap();setTimeout(()=>$('pEnd').classList.remove('hide'),win?2200:900);$('hud').classList.remove('on');}
+
+// управление
+function ptr(e){const nx=e.clientX/W*2-1,ny=-((e.clientY-Math.min(70,H*.09))/H*2-1);const p=toPlane(clamp(nx,-.95,.95),clamp(ny,-.95,.6));S.tx=p[0];S.ty=p[1];}
+addEventListener('pointerdown',e=>{if(S.mode==='play'){ptr(e);ac();}},{passive:true});
+addEventListener('pointermove',e=>{if(S.mode==='play')ptr(e);},{passive:true});
+addEventListener('keydown',e=>{if(S.mode!=='play')return;const d=.18;if(e.code==='ArrowLeft')S.tx-=d;if(e.code==='ArrowRight')S.tx+=d;if(e.code==='ArrowUp')S.ty+=d;if(e.code==='ArrowDown')S.ty-=d;});
+
+// вступление: видео с веерами
+const iv=$('intro'),iw=$('introWrap');let introDone=true,introGuard=0;
+function endIntro(){if(introDone)return;introDone=true;clearTimeout(introGuard);try{iv.pause();}catch(e){}iw.classList.remove('on');newGame();}
+function playIntro(){introDone=false;iw.classList.add('on');try{iv.currentTime=0;}catch(e){}const p=iv.play();if(p&&p.catch)p.catch(()=>endIntro());introGuard=setTimeout(()=>{if(iv.readyState<2||iv.currentTime<.05)endIntro();},3500);}
+iv.addEventListener('ended',endIntro);iv.addEventListener('error',endIntro);$('skip').addEventListener('click',endIntro);
+$('bStart').addEventListener('click',()=>{ac();try{const p=bgm.play();p&&p.catch(()=>{});}catch(e){}$('pStart').classList.add('hide');playIntro();});
+$('bAgain').addEventListener('click',()=>{$('pEnd').classList.add('hide');newGame();});
+
+/* ================= кадр ================= */
+let last=0,blinkAt=2,time=0;
+function frame(now){requestAnimationFrame(frame);if(!last)last=now;const dt=Math.min(.05,(now-last)/1000);last=now;time+=dt;S.t+=dt;
+  const idle=P_IDLE(time);let pose=idle;const F=faceT;F.smile=.35;F.open=0;F.kiss=0;F.brow=0;F.wink=0;F.look=0;
+  let gloveMode='hidden';
+  if(S.mode==='play'){S.pt+=dt;
+    if(S.phase==='wait'){if(S.pt>S.nextDelay)startThrow();}
+    if(S.phase==='throw'||S.phase==='flight'||S.phase==='result'){const tt=S.phase==='throw'?S.pt:S.throwT+(S.phase==='flight'?S.ft:S.T+S.pt);
+      if(S.phase==='throw'){S.throwT=S.pt;pose=throwPose(S.pt,S.hold,idle);
+        const st=S.pt<.5?3:S.pt<.68?2:S.pt<.86?1:0;if(st!==S.stage){S.stage=st;armL.set(st);}
+        if(S.pt>.86)gloveMode='held';F.smile=.55;F.brow=S.pt>1?.7:.2;F.open=S.pt>1.1?.35:0;
+        if(S.pt>=1.52+S.hold)release();}
+      else pose=throwPose(tt,S.hold,idle);}
+    if(S.phase==='flight'){S.ft+=dt;const t=S.ft;const p=[S.P0[0]+S.v[0]*t+.5*S.acc[0]*t*t,S.P0[1]+S.v[1]*t+.5*S.acc[1]*t*t,S.P0[2]+S.v[2]*t];
+      glove.root.pos=p;glove.root.rot=[S.spin[0]*t,0,S.spin[1]*t+.4];glove.holder.pos[1]=.32;glove.flap(time,.3);gloveMode='fly';
+      F.kiss=t<.7?1:0;F.smile=t<.7?.1:.5;F.brow=.3;F.look=clamp(S.target[0]*1.5,-1,1);
+      const k=clamp((t-S.showAt*S.T)/(S.T*(1-S.showAt)),0,1);ring.pos=[S.target[0],S.target[1],ZC];const rs=lerp(1.0,.46,k);ring.scl=[rs,rs,1];ring.mat.a=t>=S.showAt*S.T?lerp(.15,.9,k):0;
+      if(t>=S.T){const d=Math.hypot(p[0]-S.hx,p[1]-(S.hy+.05));resolve(d<.3);}}
+    else ring.mat.a=Math.max(0,ring.mat.a-dt*4);
+    if(S.phase==='result'){
+      if(S.res==='caught'){gloveMode='caught';F.smile=1;F.wink=S.pt>.25&&S.pt<.75?1:0;F.open=.25;}
+      else{const t=S.T+S.pt;glove.root.pos=[S.P0[0]+S.v[0]*t+.5*S.acc[0]*t*t,S.P0[1]+S.v[1]*t+.5*S.acc[1]*t*t,S.P0[2]+S.v[2]*t];glove.root.rot[0]+=dt*4;gloveMode='fly';F.brow=1;F.open=S.pt<.7?.7:0;F.smile=S.pt<.7?0:.6;}
+      if(S.pt>1.25){if(S.caught>=GOAL)endGame(true);else if(S.lives<=0)endGame(false);else{S.phase='reglove';S.pt=0;}}}
+    if(S.phase==='reglove'){const k=S.pt/.9;const hide={L:[.75,.25,-.9],R:idle.R,lean:idle.lean,sway:.06,turn:.55,hy:-.35,hx:0,hz:.05,bob:0};
+      pose=mixPose(idle,hide,Math.sin(clamp(k,0,1)*Math.PI));if(k>.5&&S.stage!==3){S.stage=3;armL.set(3);}F.smile=.7;F.look=-.6;
+      if(k>=1){S.phase='wait';S.pt=0;S.nextDelay=rnd(.5,1.3);}}
+  }
+  if(S.mode==='win'){S.winT+=dt;gloveMode='caught';const k=smooth(S.winT/.6);pose=mixPose(idle,{L:[-.3,.9,-.3],R:[-1.4+.5*Math.sin(S.winT*3),-.15,-2.1],lean:.1,sway:0,turn:0,hy:0,hx:.05,hz:.06,bob:0},k);F.kiss=(S.winT%2.2)<.9?1:0;F.smile=F.kiss?0:1;F.wink=(S.winT%2.2)>1.2&&(S.winT%2.2)<1.6?1:0;}
+  if(S.mode==='lose'){F.smile=.6;F.brow=.4;}
+  applyPose(pose);
+  // моргание и плавная мимика
+  if(time>blinkAt){blinkAt=time+rnd(2.2,4.8);}const bl=blinkAt-time;F.blink=(bl<.13)?1-Math.abs(bl-.065)/.065:0;
+  let key='';for(const k in face){face[k]=k==='blink'?F.blink:lerp(face[k],F[k],1-Math.pow(.0005,dt));key+=face[k].toFixed(2);}
+  if(key!==faceKey){faceKey=key;drawFace(face);}
+  // рука игрока
+  const f=1-Math.pow(1e-6,dt);S.hx=lerp(S.hx,S.tx,f);S.hy=lerp(S.hy,S.ty,f);
+  if(S.mode==='title'||S.mode==='lose'){S.tx=0;S.ty=toPlane(0,-1.4)[1];}
+  pHand.pos=[S.hx,S.hy,ZC];pHand.rot=[.25,0,-S.hx*.35];const curl=(gloveMode==='caught')?1.1:.12;pHand.f.forEach((fg,i)=>{if(i<4)fg.rot[0]=lerp(fg.rot[0],-curl,.25);});
+  // мир
+  opaque.length=0;blend.length=0;update(root,M.id());
+  // перчатка, привязанная к рукам (после расчёта матриц)
+  if(gloveMode==='held'){const h2=wpos(armR.hand);glove.root.pos=[h2[0],h2[1]-.05,h2[2]];glove.root.rot=[Math.sin(time*13)*.5-.2,0,Math.cos(time*11)*.45];glove.holder.pos[1]=0;glove.flap(time,.22);}
+  else if(gloveMode==='caught'){glove.root.pos=[S.hx,S.hy+.02,ZC+.03];glove.root.rot=[.15,0,Math.sin(time*3)*.12+.25];glove.holder.pos[1]=0;glove.flap(time*.35,.12);}
+  else if(gloveMode==='hidden'){glove.root.pos=[0,-50,0];}
+  glove.halo.vis=gloveMode==='fly';
+  if(gloveMode!=='hidden'){update(glove.root,M.id());} // обновить матрицы (узлы уже в списках)
+  // отрисовка
+  gl.clearColor(.012,.006,.008,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);gl.disable(gl.BLEND);gl.depthMask(true);
+  gl.uniformMatrix4fv(U.uVP,false,VP);gl.uniform3fv(U.uCam,cam);gl.uniform1f(U.uT,time);
+  const sp=[.8,6.8,6.2],gp=wpos(torso);let dx=gp[0]-sp[0],dy=gp[1]+.25-sp[1],dz=gp[2]-sp[2];const dl=Math.hypot(dx,dy,dz);gl.uniform3fv(U.uSP,sp);gl.uniform3fv(U.uSD,[dx/dl,dy/dl,dz/dl]);
+  const seen=new Set();for(const n of opaque){if(seen.has(n))continue;seen.add(n);drawNode(n);}
+  gl.enable(gl.BLEND);gl.depthMask(false);
+  for(const n of blend){if(seen.has(n))continue;seen.add(n);if(n.mat.a<=.003)continue;gl.blendFunc(n.mat.add?gl.ONE:gl.SRC_ALPHA,n.mat.add?gl.ONE:gl.ONE_MINUS_SRC_ALPHA);drawNode(n);}
+}
+armL.set(3);armR.set(3);drawFace(face);hud();requestAnimationFrame(frame);
+</script>
+</body>
+</html>
